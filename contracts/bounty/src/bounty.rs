@@ -136,6 +136,26 @@ pub fn claim_bounty(
 }
 
 // ---------------------------------------------------------------------------
+// helpers: fee & payout
+// ---------------------------------------------------------------------------
+
+/// Read the platform fee basis points from storage (defaults to 0 if unset).
+fn get_fee_bps(env: &Env) -> u32 {
+    env.storage()
+        .instance()
+        .get(&DataKey::FeeBps)
+        .unwrap_or(0u32)
+}
+
+/// Calculate (contributor_payout, platform_fee) from a gross amount and fee bps.
+/// Uses integer arithmetic; truncates fractional stroops in favour of contributor.
+pub fn split_payout(amount: i128, fee_bps: u32) -> (i128, i128) {
+    let fee = amount * fee_bps as i128 / 10_000;
+    let payout = amount - fee;
+    (payout, fee)
+}
+
+// ---------------------------------------------------------------------------
 // submit_work
 // ---------------------------------------------------------------------------
 
@@ -174,6 +194,64 @@ pub fn submit_work(
     // Store work hash and advance status
     bounty.work_hash = Some(work_hash);
     bounty.status = BountyStatus::Submitted;
+    save_bounty(&env, bounty);
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// approve_submission
+// ---------------------------------------------------------------------------
+
+/// Poster approves the submitted work and releases escrow to the contributor.
+///
+/// Rules enforced:
+/// - Bounty must be in `Submitted` status.
+/// - Caller must be the original poster.
+/// - Platform fee is deducted; remainder goes to contributor.
+/// - Fee portion is transferred to the contract admin address.
+pub fn approve_submission(
+    env: Env,
+    poster: Address,
+    bounty_id: BountyId,
+) -> Result<(), ContractError> {
+    let mut bounty = load_bounty(&env, bounty_id)?;
+
+    // Status guard: must be Submitted
+    if bounty.status != BountyStatus::Submitted {
+        return Err(ContractError::InvalidStatus);
+    }
+
+    // Ownership guard: only the poster may approve
+    if bounty.poster != poster {
+        return Err(ContractError::Unauthorized);
+    }
+
+    // Resolve contributor (always present when Submitted)
+    let contributor = bounty.contributor.clone().ok_or(ContractError::Unauthorized)?;
+
+    // Calculate payout split
+    let fee_bps = get_fee_bps(&env);
+    let (payout, fee) = split_payout(bounty.amount, fee_bps);
+
+    let token_client = token::Client::new(&env, &bounty.token);
+    let contract_addr = env.current_contract_address();
+
+    // Release reward to contributor
+    token_client.transfer(&contract_addr, &contributor, &payout);
+
+    // Send fee to admin (only if non-zero)
+    if fee > 0 {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(ContractError::NotInitialized)?;
+        token_client.transfer(&contract_addr, &admin, &fee);
+    }
+
+    // Advance status to Completed
+    bounty.status = BountyStatus::Completed;
     save_bounty(&env, bounty);
 
     Ok(())

@@ -13,12 +13,13 @@ pub use types::{Bounty, BountyStatus, ContractError};
 /// ChainBounty — decentralized on-chain bounty board for open-source contributors.
 ///
 /// Entry points (so far):
-///   initialize   — set admin and platform fee
-///   post_bounty  — poster locks escrow and creates a bounty
-///   claim_bounty — contributor locks their intent to work
-///   submit_work  — contributor submits an IPFS work hash
-///   get_bounty   — read a single bounty by id
-///   bounty_count — total bounties created
+///   initialize          — set admin and platform fee
+///   post_bounty         — poster locks escrow and creates a bounty
+///   claim_bounty        — contributor locks their intent to work
+///   submit_work         — contributor submits an IPFS work hash
+///   approve_submission  — poster approves work and releases escrow
+///   get_bounty          — read a single bounty by id
+///   bounty_count        — total bounties created
 #[contract]
 pub struct ChainBountyContract;
 
@@ -65,6 +66,12 @@ impl ChainBountyContract {
     ) -> Result<(), ContractError> {
         contributor.require_auth();
         bounty::submit_work(env, contributor, bounty_id, work_hash)
+    }
+
+    /// Poster approves submitted work — releases escrow to contributor minus fee.
+    pub fn approve_submission(env: Env, poster: Address, bounty_id: BountyId) -> Result<(), ContractError> {
+        poster.require_auth();
+        bounty::approve_submission(env, poster, bounty_id)
     }
 
     /// Read a single bounty by ID.
