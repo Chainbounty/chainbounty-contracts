@@ -16,6 +16,7 @@ pub use types::{Bounty, BountyStatus, ContractError};
 ///   initialize   — set admin and platform fee
 ///   post_bounty  — poster locks escrow and creates a bounty
 ///   claim_bounty — contributor locks their intent to work
+///   submit_work  — contributor submits an IPFS work hash
 ///   get_bounty   — read a single bounty by id
 ///   bounty_count — total bounties created
 #[contract]
@@ -53,6 +54,17 @@ impl ChainBountyContract {
     pub fn claim_bounty(env: Env, contributor: Address, bounty_id: BountyId) -> Result<(), ContractError> {
         contributor.require_auth();
         bounty::claim_bounty(env, contributor, bounty_id)
+    }
+
+    /// Submit work for a claimed bounty via IPFS content hash.
+    pub fn submit_work(
+        env: Env,
+        contributor: Address,
+        bounty_id: BountyId,
+        work_hash: String,
+    ) -> Result<(), ContractError> {
+        contributor.require_auth();
+        bounty::submit_work(env, contributor, bounty_id, work_hash)
     }
 
     /// Read a single bounty by ID.

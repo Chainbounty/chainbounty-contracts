@@ -136,6 +136,50 @@ pub fn claim_bounty(
 }
 
 // ---------------------------------------------------------------------------
+// submit_work
+// ---------------------------------------------------------------------------
+
+/// Contributor submits an IPFS content hash as proof of work.
+///
+/// Rules enforced:
+/// - Bounty must exist and be in `Claimed` status.
+/// - Caller must be the locked contributor.
+/// - Deadline must not have passed.
+/// - Work hash must be a non-empty string.
+pub fn submit_work(
+    env: Env,
+    contributor: Address,
+    bounty_id: BountyId,
+    work_hash: String,
+) -> Result<(), ContractError> {
+    let mut bounty = load_bounty(&env, bounty_id)?;
+
+    // Status guard: must be Claimed
+    if bounty.status != BountyStatus::Claimed {
+        return Err(ContractError::InvalidStatus);
+    }
+
+    // Ownership guard: only the locked contributor may submit
+    match &bounty.contributor {
+        Some(c) if *c == contributor => {}
+        _ => return Err(ContractError::Unauthorized),
+    }
+
+    // Deadline guard
+    validation::require_not_expired(&env, bounty.deadline)?;
+
+    // Input guard: work hash must be non-empty
+    validation::require_non_empty_string(&work_hash)?;
+
+    // Store work hash and advance status
+    bounty.work_hash = Some(work_hash);
+    bounty.status = BountyStatus::Submitted;
+    save_bounty(&env, bounty);
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // get_bounty (read-only)
 // ---------------------------------------------------------------------------
 
