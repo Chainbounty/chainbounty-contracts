@@ -200,6 +200,45 @@ pub fn submit_work(
 }
 
 // ---------------------------------------------------------------------------
+// cancel_bounty
+// ---------------------------------------------------------------------------
+
+/// Poster cancels an Open bounty and receives a full escrow refund.
+///
+/// Rules enforced:
+/// - Bounty must be in `Open` status (no contributor locked in).
+/// - Caller must be the original poster.
+/// - Full escrow amount is returned to the poster.
+pub fn cancel_bounty(
+    env: Env,
+    poster: Address,
+    bounty_id: BountyId,
+) -> Result<(), ContractError> {
+    let mut bounty = load_bounty(&env, bounty_id)?;
+
+    // Status guard: can only cancel an Open bounty
+    if bounty.status != BountyStatus::Open {
+        return Err(ContractError::InvalidStatus);
+    }
+
+    // Ownership guard: only the poster may cancel
+    if bounty.poster != poster {
+        return Err(ContractError::Unauthorized);
+    }
+
+    // Refund full escrow to poster
+    let token_client = token::Client::new(&env, &bounty.token);
+    let contract_addr = env.current_contract_address();
+    token_client.transfer(&contract_addr, &poster, &bounty.amount);
+
+    // Mark as Cancelled
+    bounty.status = BountyStatus::Cancelled;
+    save_bounty(&env, bounty);
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // reject_submission
 // ---------------------------------------------------------------------------
 
