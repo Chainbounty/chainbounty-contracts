@@ -98,6 +98,44 @@ pub fn post_bounty(
 }
 
 // ---------------------------------------------------------------------------
+// claim_bounty
+// ---------------------------------------------------------------------------
+
+/// Lock a contributor onto an Open bounty.
+///
+/// Rules enforced:
+/// - Bounty must exist and be in `Open` status.
+/// - Deadline must not have passed.
+/// - Poster cannot claim their own bounty.
+pub fn claim_bounty(
+    env: Env,
+    contributor: Address,
+    bounty_id: BountyId,
+) -> Result<(), ContractError> {
+    let mut bounty = load_bounty(&env, bounty_id)?;
+
+    // Status guard: must be Open
+    if bounty.status != BountyStatus::Open {
+        return Err(ContractError::InvalidStatus);
+    }
+
+    // Deadline guard: must not have expired
+    validation::require_not_expired(&env, bounty.deadline)?;
+
+    // Self-claim guard: poster cannot be the contributor
+    if bounty.poster == contributor {
+        return Err(ContractError::Unauthorized);
+    }
+
+    // Lock the contributor and advance status
+    bounty.contributor = Some(contributor);
+    bounty.status = BountyStatus::Claimed;
+    save_bounty(&env, bounty);
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // get_bounty (read-only)
 // ---------------------------------------------------------------------------
 

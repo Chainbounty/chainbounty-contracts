@@ -15,6 +15,7 @@ pub use types::{Bounty, BountyStatus, ContractError};
 /// Entry points (so far):
 ///   initialize   — set admin and platform fee
 ///   post_bounty  — poster locks escrow and creates a bounty
+///   claim_bounty — contributor locks their intent to work
 ///   get_bounty   — read a single bounty by id
 ///   bounty_count — total bounties created
 #[contract]
@@ -46,6 +47,12 @@ impl ChainBountyContract {
     ) -> Result<BountyId, ContractError> {
         poster.require_auth();
         bounty::post_bounty(env, poster, token, amount, title, description_hash, deadline)
+    }
+
+    /// Claim an open bounty. Locks the contributor to this bounty.
+    pub fn claim_bounty(env: Env, contributor: Address, bounty_id: BountyId) -> Result<(), ContractError> {
+        contributor.require_auth();
+        bounty::claim_bounty(env, contributor, bounty_id)
     }
 
     /// Read a single bounty by ID.
