@@ -200,6 +200,42 @@ pub fn submit_work(
 }
 
 // ---------------------------------------------------------------------------
+// reject_submission
+// ---------------------------------------------------------------------------
+
+/// Poster rejects submitted work — clears contributor and resets bounty to Open.
+///
+/// Rules enforced:
+/// - Bounty must be in `Submitted` status.
+/// - Caller must be the original poster.
+/// - Escrow stays locked; bounty re-opens for a new contributor.
+pub fn reject_submission(
+    env: Env,
+    poster: Address,
+    bounty_id: BountyId,
+) -> Result<(), ContractError> {
+    let mut bounty = load_bounty(&env, bounty_id)?;
+
+    // Status guard: must be Submitted
+    if bounty.status != BountyStatus::Submitted {
+        return Err(ContractError::InvalidStatus);
+    }
+
+    // Ownership guard: only the poster may reject
+    if bounty.poster != poster {
+        return Err(ContractError::Unauthorized);
+    }
+
+    // Clear contributor and work hash, reset to Open
+    bounty.contributor = None;
+    bounty.work_hash = None;
+    bounty.status = BountyStatus::Open;
+    save_bounty(&env, bounty);
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // approve_submission
 // ---------------------------------------------------------------------------
 

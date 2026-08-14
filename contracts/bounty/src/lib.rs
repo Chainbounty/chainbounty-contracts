@@ -18,6 +18,7 @@ pub use types::{Bounty, BountyStatus, ContractError};
 ///   claim_bounty        — contributor locks their intent to work
 ///   submit_work         — contributor submits an IPFS work hash
 ///   approve_submission  — poster approves work and releases escrow
+///   reject_submission   — poster rejects work and resets claim
 ///   get_bounty          — read a single bounty by id
 ///   bounty_count        — total bounties created
 #[contract]
@@ -72,6 +73,12 @@ impl ChainBountyContract {
     pub fn approve_submission(env: Env, poster: Address, bounty_id: BountyId) -> Result<(), ContractError> {
         poster.require_auth();
         bounty::approve_submission(env, poster, bounty_id)
+    }
+
+    /// Poster rejects submitted work — resets bounty back to Open.
+    pub fn reject_submission(env: Env, poster: Address, bounty_id: BountyId) -> Result<(), ContractError> {
+        poster.require_auth();
+        bounty::reject_submission(env, poster, bounty_id)
     }
 
     /// Read a single bounty by ID.
