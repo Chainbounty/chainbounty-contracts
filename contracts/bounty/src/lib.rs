@@ -1,6 +1,7 @@
 #![no_std]
 
 mod bounty;
+mod dispute;
 mod types;
 mod validation;
 
@@ -20,6 +21,7 @@ pub use types::{Bounty, BountyStatus, ContractError};
 ///   approve_submission  — poster approves work and releases escrow
 ///   reject_submission   — poster rejects work and resets claim
 ///   cancel_bounty       — poster cancels an open bounty and gets refund
+///   dispute_bounty      — either party raises a dispute
 ///   get_bounty          — read a single bounty by id
 ///   bounty_count        — total bounties created
 #[contract]
@@ -86,6 +88,12 @@ impl ChainBountyContract {
     pub fn cancel_bounty(env: Env, poster: Address, bounty_id: BountyId) -> Result<(), ContractError> {
         poster.require_auth();
         bounty::cancel_bounty(env, poster, bounty_id)
+    }
+
+    /// Either party raises a dispute on a submitted bounty.
+    pub fn dispute_bounty(env: Env, caller: Address, bounty_id: BountyId) -> Result<(), ContractError> {
+        caller.require_auth();
+        dispute::dispute_bounty(env, caller, bounty_id)
     }
 
     /// Read a single bounty by ID.
