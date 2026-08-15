@@ -22,6 +22,7 @@ pub use types::{Bounty, BountyStatus, ContractError};
 ///   reject_submission   — poster rejects work and resets claim
 ///   cancel_bounty       — poster cancels an open bounty and gets refund
 ///   dispute_bounty      — either party raises a dispute
+///   resolve_dispute     — admin/resolver settles a dispute with split payment
 ///   get_bounty          — read a single bounty by id
 ///   bounty_count        — total bounties created
 #[contract]
@@ -94,6 +95,17 @@ impl ChainBountyContract {
     pub fn dispute_bounty(env: Env, caller: Address, bounty_id: BountyId) -> Result<(), ContractError> {
         caller.require_auth();
         dispute::dispute_bounty(env, caller, bounty_id)
+    }
+
+    /// Admin/resolver resolves a disputed bounty with a split ratio (0–100 to contributor).
+    pub fn resolve_dispute(
+        env: Env,
+        resolver: Address,
+        bounty_id: BountyId,
+        contributor_pct: u32,
+    ) -> Result<(), ContractError> {
+        resolver.require_auth();
+        dispute::resolve_dispute(env, resolver, bounty_id, contributor_pct)
     }
 
     /// Read a single bounty by ID.
