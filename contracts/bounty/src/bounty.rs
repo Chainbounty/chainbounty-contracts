@@ -313,9 +313,43 @@ pub fn approve_submission(
 }
 
 // ---------------------------------------------------------------------------
-// get_bounty (read-only)
+// get_bounty / list_bounties (read-only)
 // ---------------------------------------------------------------------------
 
+/// Return a single bounty by ID.
 pub fn get_bounty(env: &Env, bounty_id: BountyId) -> Result<Bounty, ContractError> {
     load_bounty(env, bounty_id)
+}
+
+/// Return a page of bounties in ascending ID order.
+///
+/// - `from_id`  — first bounty ID to include (1-based; pass 1 to start from the beginning)
+/// - `limit`    — maximum number of records to return (capped at 20 internally)
+///
+/// IDs that no longer exist in storage are silently skipped.
+pub fn list_bounties(env: &Env, from_id: BountyId, limit: u32) -> soroban_sdk::Vec<Bounty> {
+    let cap: u32 = if limit > 20 { 20 } else { limit };
+    let total: u64 = env
+        .storage()
+        .instance()
+        .get(&DataKey::BountyCount)
+        .unwrap_or(0);
+
+    let mut results: soroban_sdk::Vec<Bounty> = soroban_sdk::Vec::new(env);
+    let mut collected: u32 = 0;
+    let mut id = from_id;
+
+    while id <= total && collected < cap {
+        if let Some(b) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Bounty>(&DataKey::Bounty(id))
+        {
+            results.push_back(b);
+            collected += 1;
+        }
+        id += 1;
+    }
+
+    results
 }

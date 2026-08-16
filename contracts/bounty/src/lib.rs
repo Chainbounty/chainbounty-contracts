@@ -24,6 +24,7 @@ pub use types::{Bounty, BountyStatus, ContractError};
 ///   dispute_bounty      — either party raises a dispute
 ///   resolve_dispute     — admin/resolver settles a dispute with split payment
 ///   get_bounty          — read a single bounty by id
+///   list_bounties       — paginated read of all bounties
 ///   bounty_count        — total bounties created
 #[contract]
 pub struct ChainBountyContract;
@@ -111,6 +112,12 @@ impl ChainBountyContract {
     /// Read a single bounty by ID.
     pub fn get_bounty(env: Env, bounty_id: BountyId) -> Result<Bounty, ContractError> {
         bounty::get_bounty(&env, bounty_id)
+    }
+
+    /// Return a page of bounties in ascending ID order.
+    /// `from_id` is the first ID to include; `limit` is max records (capped at 20).
+    pub fn list_bounties(env: Env, from_id: BountyId, limit: u32) -> soroban_sdk::Vec<Bounty> {
+        bounty::list_bounties(&env, from_id, limit)
     }
 
     /// Read current bounty count.
