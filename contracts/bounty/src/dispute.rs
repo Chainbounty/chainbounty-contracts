@@ -120,15 +120,9 @@ pub fn resolve_dispute(
     // poster refund (remainder)
     let poster_refund = bounty.amount - contributor_gross;
 
-    // deduct platform fee from contributor's gross share
-    let fee_bps: u32 = env
-        .storage()
-        .instance()
-        .get(&DataKey::FeeBps)
-        .unwrap_or(0u32);
-
-    let fee = contributor_gross * fee_bps as i128 / 10_000;
-    let contributor_net = contributor_gross - fee;
+    // deduct platform fee from contributor's gross share via shared helper
+    let fee_bps = crate::validation::get_fee_bps(&env);
+    let (contributor_net, fee) = crate::validation::compute_fee_split(contributor_gross, fee_bps);
 
     // --- transfers ---
     if contributor_net > 0 {

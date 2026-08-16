@@ -57,3 +57,27 @@ pub fn require_valid_split(pct: u32) -> Result<(), ContractError> {
     }
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Fee helpers (shared across bounty and dispute modules)
+// ---------------------------------------------------------------------------
+
+/// Read the platform fee basis points from contract instance storage.
+/// Returns 0 if not set (safe default — no fee).
+pub fn get_fee_bps(env: &Env) -> u32 {
+    use crate::types::DataKey;
+    env.storage()
+        .instance()
+        .get(&DataKey::FeeBps)
+        .unwrap_or(0u32)
+}
+
+/// Compute `(net_payout, platform_fee)` from a gross amount and fee basis points.
+///
+/// Fee = amount × fee_bps / 10_000  (integer division, truncates in favour of payee)
+/// Net  = amount − fee
+pub fn compute_fee_split(amount: i128, fee_bps: u32) -> (i128, i128) {
+    let fee = amount * fee_bps as i128 / 10_000;
+    let net = amount - fee;
+    (net, fee)
+}

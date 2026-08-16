@@ -136,26 +136,6 @@ pub fn claim_bounty(
 }
 
 // ---------------------------------------------------------------------------
-// helpers: fee & payout
-// ---------------------------------------------------------------------------
-
-/// Read the platform fee basis points from storage (defaults to 0 if unset).
-fn get_fee_bps(env: &Env) -> u32 {
-    env.storage()
-        .instance()
-        .get(&DataKey::FeeBps)
-        .unwrap_or(0u32)
-}
-
-/// Calculate (contributor_payout, platform_fee) from a gross amount and fee bps.
-/// Uses integer arithmetic; truncates fractional stroops in favour of contributor.
-pub fn split_payout(amount: i128, fee_bps: u32) -> (i128, i128) {
-    let fee = amount * fee_bps as i128 / 10_000;
-    let payout = amount - fee;
-    (payout, fee)
-}
-
-// ---------------------------------------------------------------------------
 // submit_work
 // ---------------------------------------------------------------------------
 
@@ -306,8 +286,8 @@ pub fn approve_submission(
     let contributor = bounty.contributor.clone().ok_or(ContractError::Unauthorized)?;
 
     // Calculate payout split
-    let fee_bps = get_fee_bps(&env);
-    let (payout, fee) = split_payout(bounty.amount, fee_bps);
+    let fee_bps = validation::get_fee_bps(&env);
+    let (payout, fee) = validation::compute_fee_split(bounty.amount, fee_bps);
 
     let token_client = token::Client::new(&env, &bounty.token);
     let contract_addr = env.current_contract_address();
