@@ -62,6 +62,8 @@ pub fn dispute_bounty(
     bounty.status = BountyStatus::Disputed;
     save_bounty(&env, bounty);
 
+    crate::events::emit_disputed(&env, bounty_id, &caller);
+
     Ok(())
 }
 
@@ -140,6 +142,8 @@ pub fn resolve_dispute(
     // Advance to Resolved
     bounty.status = BountyStatus::Resolved;
     save_bounty(&env, bounty);
+
+    crate::events::emit_resolved(&env, bounty_id, &resolver, contributor_pct);
 
     Ok(())
 }

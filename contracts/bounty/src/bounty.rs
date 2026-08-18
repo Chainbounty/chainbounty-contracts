@@ -94,6 +94,8 @@ pub fn post_bounty(
         .persistent()
         .set(&DataKey::Bounty(id), &bounty);
 
+    crate::events::emit_bounty_posted(&env, id, &poster, amount);
+
     Ok(id)
 }
 
@@ -128,9 +130,11 @@ pub fn claim_bounty(
     }
 
     // Lock the contributor and advance status
-    bounty.contributor = Some(contributor);
+    bounty.contributor = Some(contributor.clone());
     bounty.status = BountyStatus::Claimed;
     save_bounty(&env, bounty);
+
+    crate::events::emit_bounty_claimed(&env, bounty_id, &contributor);
 
     Ok(())
 }
@@ -172,9 +176,11 @@ pub fn submit_work(
     validation::require_non_empty_string(&work_hash)?;
 
     // Store work hash and advance status
-    bounty.work_hash = Some(work_hash);
+    bounty.work_hash = Some(work_hash.clone());
     bounty.status = BountyStatus::Submitted;
     save_bounty(&env, bounty);
+
+    crate::events::emit_work_submitted(&env, bounty_id, &contributor, &work_hash);
 
     Ok(())
 }
@@ -215,6 +221,8 @@ pub fn cancel_bounty(
     bounty.status = BountyStatus::Cancelled;
     save_bounty(&env, bounty);
 
+    crate::events::emit_cancelled(&env, bounty_id, &poster);
+
     Ok(())
 }
 
@@ -250,6 +258,8 @@ pub fn reject_submission(
     bounty.work_hash = None;
     bounty.status = BountyStatus::Open;
     save_bounty(&env, bounty);
+
+    crate::events::emit_rejected(&env, bounty_id, &poster);
 
     Ok(())
 }
@@ -308,6 +318,8 @@ pub fn approve_submission(
     // Advance status to Completed
     bounty.status = BountyStatus::Completed;
     save_bounty(&env, bounty);
+
+    crate::events::emit_approved(&env, bounty_id, &contributor, payout);
 
     Ok(())
 }

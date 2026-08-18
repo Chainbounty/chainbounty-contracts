@@ -2,6 +2,7 @@
 
 mod bounty;
 mod dispute;
+mod events;
 mod types;
 mod validation;
 
@@ -40,6 +41,7 @@ impl ChainBountyContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         env.storage().instance().set(&DataKey::BountyCount, &0u64);
+        events::emit_initialized(&env, &admin, fee_bps);
         Ok(())
     }
 
