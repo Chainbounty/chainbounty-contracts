@@ -712,3 +712,113 @@ fn test_multi_token_support() {
     let token_b_balance = token_b_client.balance(&contributor_b);
     assert_eq!(token_b_balance, 47_500); // 50k - 5% fee
 }
+
+// ---------------------------------------------------------------------------
+// Reputation tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_reputation_increments_on_approval() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let contributor = Address::generate(&env);
+
+    // Initial reputation should be 0
+    let rep_initial = client.get_reputation(&contributor);
+    assert_eq!(rep_initial, 0);
+
+    // Complete first bounty
+    let title1 = String::from_str(&env, "Bounty 1");
+    let desc1 = String::from_str(&env, "QmDesc1");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id1 = client.post_bounty(&poster, &token_id, &10000, &title1, &desc1, &deadline);
+    client.claim_bounty(&contributor, &bounty_id1);
+
+    let work_hash1 = String::from_str(&env, "QmWork1");
+    client.submit_work(&contributor, &bounty_id1, &work_hash1);
+    client.approve_submission(&poster, &bounty_id1);
+
+    // Reputation should be 1
+    let rep_after_first = client.get_reputation(&contributor);
+    assert_eq!(rep_after_first, 1);
+
+    // Complete second bounty
+    let title2 = String::from_str(&env, "Bounty 2");
+    let desc2 = String::from_str(&env, "QmDesc2");
+
+    let bounty_id2 = client.post_bounty(&poster, &token_id, &20000, &title2, &desc2, &deadline);
+    client.claim_bounty(&contributor, &bounty_id2);
+
+    let work_hash2 = String::from_str(&env, "QmWork2");
+    client.submit_work(&contributor, &bounty_id2, &work_hash2);
+    client.approve_submission(&poster, &bounty_id2);
+
+    // Reputation should be 2
+    let rep_after_second = client.get_reputation(&contributor);
+    assert_eq!(rep_after_second, 2);
+}
+
+#[test]
+fn test_reputation_not_incremented_on_reject() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let contributor = Address::generate(&env);
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    let work_hash = String::from_str(&env, "QmWork");
+    client.submit_work(&contributor, &bounty_id, &work_hash);
+
+    // Reject instead of approve
+    client.reject_submission(&poster, &bounty_id);
+
+    // Reputation should remain 0
+    let rep = client.get_reputation(&contributor);
+    assert_eq!(rep, 0);
+}
+
+#[test]
+fn test_reputation_different_contributors() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let contributor_a = Address::generate(&env);
+    let contributor_b = Address::generate(&env);
+
+    let deadline = env.ledger().timestamp() + 1000;
+
+    // Contributor A completes 1 bounty
+    let title_a = String::from_str(&env, "Bounty A");
+    let desc_a = String::from_str(&env, "QmA");
+    let bounty_id_a = client.post_bounty(&poster, &token_id, &10000, &title_a, &desc_a, &deadline);
+    client.claim_bounty(&contributor_a, &bounty_id_a);
+    let work_a = String::from_str(&env, "QmWorkA");
+    client.submit_work(&contributor_a, &bounty_id_a, &work_a);
+    client.approve_submission(&poster, &bounty_id_a);
+
+    // Contributor B completes 2 bounties
+    let title_b1 = String::from_str(&env, "Bounty B1");
+    let desc_b1 = String::from_str(&env, "QmB1");
+    let bounty_id_b1 = client.post_bounty(&poster, &token_id, &10000, &title_b1, &desc_b1, &deadline);
+    client.claim_bounty(&contributor_b, &bounty_id_b1);
+    let work_b1 = String::from_str(&env, "QmWorkB1");
+    client.submit_work(&contributor_b, &bounty_id_b1, &work_b1);
+    client.approve_submission(&poster, &bounty_id_b1);
+
+    let title_b2 = String::from_str(&env, "Bounty B2");
+    let desc_b2 = String::from_str(&env, "QmB2");
+    let bounty_id_b2 = client.post_bounty(&poster, &token_id, &10000, &title_b2, &desc_b2, &deadline);
+    client.claim_bounty(&contributor_b, &bounty_id_b2);
+    let work_b2 = String::from_str(&env, "QmWorkB2");
+    client.submit_work(&contributor_b, &bounty_id_b2, &work_b2);
+    client.approve_submission(&poster, &bounty_id_b2);
+
+    // Verify individual reputation scores
+    assert_eq!(client.get_reputation(&contributor_a), 1);
+    assert_eq!(client.get_reputation(&contributor_b), 2);
+}

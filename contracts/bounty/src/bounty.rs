@@ -319,9 +319,36 @@ pub fn approve_submission(
     bounty.status = BountyStatus::Completed;
     save_bounty(&env, bounty);
 
+    // Increment contributor reputation
+    increment_reputation(&env, &contributor);
+
     crate::events::emit_approved(&env, bounty_id, &contributor, payout);
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Reputation helpers
+// ---------------------------------------------------------------------------
+
+/// Increment a contributor's reputation score by 1.
+fn increment_reputation(env: &Env, contributor: &Address) {
+    let current: u32 = env
+        .storage()
+        .persistent()
+        .get(&DataKey::Reputation(contributor.clone()))
+        .unwrap_or(0);
+    env.storage()
+        .persistent()
+        .set(&DataKey::Reputation(contributor.clone()), &(current + 1));
+}
+
+/// Read a contributor's reputation score (public view function).
+pub fn get_reputation(env: &Env, contributor: &Address) -> u32 {
+    env.storage()
+        .persistent()
+        .get(&DataKey::Reputation(contributor.clone()))
+        .unwrap_or(0)
 }
 
 // ---------------------------------------------------------------------------
