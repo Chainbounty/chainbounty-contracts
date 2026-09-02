@@ -27,13 +27,60 @@ cargo install --locked soroban-cli --features opt
 ## Build
 
 ```bash
+# Build WASM
 cargo build --target wasm32-unknown-unknown --release
+
+# Or use the build script (includes optimization)
+chmod +x scripts/build-contracts.sh
+./scripts/build-contracts.sh
 ```
+
+The build script produces an optimized WASM file at:
+`target/wasm32-unknown-unknown/release/chainbounty_optimized.wasm`
 
 ## Test
 
 ```bash
 cargo test
+```
+
+## Deploy
+
+### Testnet Deployment
+
+```bash
+# Prerequisites:
+# 1. Install soroban-cli: cargo install --locked soroban-cli --features opt
+# 2. Configure testnet: soroban network add testnet --rpc-url https://soroban-testnet.stellar.org --network-passphrase "Test SDF Network ; September 2015"
+# 3. Generate identity: soroban keys generate deployer
+# 4. Fund account: https://laboratory.stellar.org/#account-creator?network=test
+
+chmod +x scripts/deploy-testnet.sh
+./scripts/deploy-testnet.sh
+```
+
+After deployment, initialize the contract:
+
+```bash
+soroban contract invoke \
+  --id <CONTRACT_ID> \
+  --source deployer \
+  --network testnet \
+  -- initialize \
+  --admin <ADMIN_ADDRESS> \
+  --fee_bps 500
+```
+
+### Mainnet Deployment
+
+⚠️ **Only deploy to mainnet after:**
+- Complete security audit
+- Extensive testnet testing
+- Multi-sig or governance setup for admin role
+
+```bash
+chmod +x scripts/deploy-mainnet.sh
+./scripts/deploy-mainnet.sh
 ```
 
 ## Project Structure

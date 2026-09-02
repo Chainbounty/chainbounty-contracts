@@ -2,3 +2,6 @@ target/
 *.wasm
 *.d
 .soroban/
+
+# Deployment artifacts
+deployments/
