@@ -633,3 +633,82 @@ fn test_resolve_dispute_invalid_split() {
     let result = client.try_resolve_dispute(&admin, &bounty_id, &101);
     assert_eq!(result, Err(Ok(ContractError::InvalidSplit)));
 }
+
+// ---------------------------------------------------------------------------
+// Multi-token support tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_multi_token_support() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, ChainBountyContract);
+    let client = ChainBountyContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &500);
+
+    // Create two different tokens
+    let token_admin = Address::generate(&env);
+    let token_a_id = env.register_stellar_asset_contract(token_admin.clone());
+    let token_b_id = env.register_stellar_asset_contract(token_admin.clone());
+
+    let poster1 = Address::generate(&env);
+    let poster2 = Address::generate(&env);
+
+    // Mint different tokens to different posters
+    let token_a_client = token::StellarAssetClient::new(&env, &token_a_id);
+    token_a_client.mint(&poster1, &500_000);
+
+    let token_b_client = token::StellarAssetClient::new(&env, &token_b_id);
+    token_b_client.mint(&poster2, &300_000);
+
+    // Post bounty with token A
+    let title_a = String::from_str(&env, "Bounty A");
+    let desc_a = String::from_str(&env, "QmA");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_a_id = client.post_bounty(&poster1, &token_a_id, &100_000, &title_a, &desc_a, &deadline);
+
+    // Post bounty with token B
+    let title_b = String::from_str(&env, "Bounty B");
+    let desc_b = String::from_str(&env, "QmB");
+
+    let bounty_b_id = client.post_bounty(&poster2, &token_b_id, &50_000, &title_b, &desc_b, &deadline);
+
+    // Verify both bounties store their respective tokens
+    let bounty_a = client.get_bounty(&bounty_a_id);
+    assert_eq!(bounty_a.token, token_a_id);
+    assert_eq!(bounty_a.amount, 100_000);
+
+    let bounty_b = client.get_bounty(&bounty_b_id);
+    assert_eq!(bounty_b.token, token_b_id);
+    assert_eq!(bounty_b.amount, 50_000);
+
+    // Claim and complete bounty A with token A payout
+    let contributor_a = Address::generate(&env);
+    client.claim_bounty(&contributor_a, &bounty_a_id);
+
+    let work_hash_a = String::from_str(&env, "QmWorkA");
+    client.submit_work(&contributor_a, &bounty_a_id, &work_hash_a);
+
+    client.approve_submission(&poster1, &bounty_a_id);
+
+    // Verify contributor received token A
+    let token_a_balance = token_a_client.balance(&contributor_a);
+    assert_eq!(token_a_balance, 95_000); // 100k - 5% fee
+
+    // Claim and complete bounty B with token B payout
+    let contributor_b = Address::generate(&env);
+    client.claim_bounty(&contributor_b, &bounty_b_id);
+
+    let work_hash_b = String::from_str(&env, "QmWorkB");
+    client.submit_work(&contributor_b, &bounty_b_id, &work_hash_b);
+
+    client.approve_submission(&poster2, &bounty_b_id);
+
+    // Verify contributor received token B
+    let token_b_balance = token_b_client.balance(&contributor_b);
+    assert_eq!(token_b_balance, 47_500); // 50k - 5% fee
+}
