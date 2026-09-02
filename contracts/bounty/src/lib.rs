@@ -6,6 +6,9 @@ mod events;
 mod types;
 mod validation;
 
+#[cfg(test)]
+mod tests;
+
 use soroban_sdk::{contract, contractimpl, Address, Env, String};
 
 use types::{BountyId, DataKey};
