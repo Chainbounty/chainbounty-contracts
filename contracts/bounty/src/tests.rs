@@ -380,3 +380,256 @@ fn test_reject_submission_not_poster() {
     let result = client.try_reject_submission(&random_user, &bounty_id);
     assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
 }
+
+// ---------------------------------------------------------------------------
+// Dispute bounty tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_dispute_bounty_by_poster() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    let work_hash = String::from_str(&env, "QmWork");
+    client.submit_work(&contributor, &bounty_id, &work_hash);
+
+    // Poster raises dispute
+    client.dispute_bounty(&poster, &bounty_id);
+
+    let bounty = client.get_bounty(&bounty_id);
+    assert_eq!(bounty.status, crate::types::BountyStatus::Disputed);
+}
+
+#[test]
+fn test_dispute_bounty_by_contributor() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    let work_hash = String::from_str(&env, "QmWork");
+    client.submit_work(&contributor, &bounty_id, &work_hash);
+
+    // Contributor raises dispute
+    client.dispute_bounty(&contributor, &bounty_id);
+
+    let bounty = client.get_bounty(&bounty_id);
+    assert_eq!(bounty.status, crate::types::BountyStatus::Disputed);
+}
+
+#[test]
+fn test_dispute_bounty_invalid_status() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    // Try to dispute an Open bounty (no submission yet)
+    let result = client.try_dispute_bounty(&poster, &bounty_id);
+    assert_eq!(result, Err(Ok(ContractError::InvalidStatus)));
+}
+
+#[test]
+fn test_dispute_bounty_not_a_party() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    let work_hash = String::from_str(&env, "QmWork");
+    client.submit_work(&contributor, &bounty_id, &work_hash);
+
+    // Random user tries to dispute
+    let random_user = Address::generate(&env);
+    let result = client.try_dispute_bounty(&random_user, &bounty_id);
+    assert_eq!(result, Err(Ok(ContractError::NotAParty)));
+}
+
+// ---------------------------------------------------------------------------
+// Resolve dispute tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_resolve_dispute_50_50_split() {
+    let (env, client, admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+    let amount = 100_000i128;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &amount, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    let work_hash = String::from_str(&env, "QmWork");
+    client.submit_work(&contributor, &bounty_id, &work_hash);
+
+    client.dispute_bounty(&poster, &bounty_id);
+
+    // Admin resolves with 50% split
+    client.resolve_dispute(&admin, &bounty_id, &50);
+
+    let bounty = client.get_bounty(&bounty_id);
+    assert_eq!(bounty.status, crate::types::BountyStatus::Resolved);
+
+    let token_client = token::Client::new(&env, &token_id);
+
+    // Contributor gets 50% of 100k = 50k, minus 5% fee = 47,500
+    let contributor_balance = token_client.balance(&contributor);
+    assert_eq!(contributor_balance, 47_500);
+
+    // Poster gets 50% refund = 50,000
+    let poster_balance = token_client.balance(&poster);
+    // Poster started with 1M, spent 100k on bounty, got 50k back = 950,000
+    assert_eq!(poster_balance, 950_000);
+
+    // Admin gets the 5% fee on contributor's 50k = 2,500
+    let admin_balance = token_client.balance(&admin);
+    assert_eq!(admin_balance, 2_500);
+}
+
+#[test]
+fn test_resolve_dispute_100_to_contributor() {
+    let (env, client, admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+    let amount = 100_000i128;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &amount, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    let work_hash = String::from_str(&env, "QmWork");
+    client.submit_work(&contributor, &bounty_id, &work_hash);
+
+    client.dispute_bounty(&contributor, &bounty_id);
+
+    // Admin awards 100% to contributor
+    client.resolve_dispute(&admin, &bounty_id, &100);
+
+    let token_client = token::Client::new(&env, &token_id);
+
+    // Contributor gets 100k minus 5% fee = 95,000
+    let contributor_balance = token_client.balance(&contributor);
+    assert_eq!(contributor_balance, 95_000);
+
+    // Poster gets 0 refund
+    let poster_balance = token_client.balance(&poster);
+    assert_eq!(poster_balance, 900_000); // started with 1M, spent 100k
+
+    // Admin gets 5k fee
+    let admin_balance = token_client.balance(&admin);
+    assert_eq!(admin_balance, 5_000);
+}
+
+#[test]
+fn test_resolve_dispute_0_to_contributor() {
+    let (env, client, admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+    let amount = 100_000i128;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &amount, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    let work_hash = String::from_str(&env, "QmWork");
+    client.submit_work(&contributor, &bounty_id, &work_hash);
+
+    client.dispute_bounty(&poster, &bounty_id);
+
+    // Admin awards 0% to contributor (full refund to poster)
+    client.resolve_dispute(&admin, &bounty_id, &0);
+
+    let token_client = token::Client::new(&env, &token_id);
+
+    // Contributor gets 0
+    let contributor_balance = token_client.balance(&contributor);
+    assert_eq!(contributor_balance, 0);
+
+    // Poster gets full 100k refund
+    let poster_balance = token_client.balance(&poster);
+    assert_eq!(poster_balance, 1_000_000); // 1M - 100k + 100k = 1M
+
+    // Admin gets no fee (0% to contributor means no fee deduction)
+    let admin_balance = token_client.balance(&admin);
+    assert_eq!(admin_balance, 0);
+}
+
+#[test]
+fn test_resolve_dispute_not_admin() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    let work_hash = String::from_str(&env, "QmWork");
+    client.submit_work(&contributor, &bounty_id, &work_hash);
+
+    client.dispute_bounty(&poster, &bounty_id);
+
+    // Random user tries to resolve
+    let random_user = Address::generate(&env);
+    let result = client.try_resolve_dispute(&random_user, &bounty_id, &50);
+    assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
+}
+
+#[test]
+fn test_resolve_dispute_invalid_split() {
+    let (env, client, admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    let work_hash = String::from_str(&env, "QmWork");
+    client.submit_work(&contributor, &bounty_id, &work_hash);
+
+    client.dispute_bounty(&poster, &bounty_id);
+
+    // Try to resolve with invalid percentage > 100
+    let result = client.try_resolve_dispute(&admin, &bounty_id, &101);
+    assert_eq!(result, Err(Ok(ContractError::InvalidSplit)));
+}
