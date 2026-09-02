@@ -48,10 +48,64 @@ contracts/
       dispute.rs      # dispute resolution
       validation.rs   # shared validation helpers
       events.rs       # on-chain event definitions
+      tests.rs        # unit tests
     Cargo.toml
 Cargo.toml            # workspace root
 rust-toolchain.toml   # pinned Rust toolchain
 ```
+
+## Dependency Hygiene
+
+### Pinned Versions
+
+- **Rust toolchain:** 1.81.0 (see `rust-toolchain.toml`)
+- **Soroban SDK:** 21.7.6 (see `Cargo.toml`)
+
+These versions are pinned to ensure reproducible builds and prevent breaking changes from upstream dependencies.
+
+### Security Notes
+
+**⚠️ This contract has NOT been audited. Use at your own risk.**
+
+Key security considerations for production deployments:
+
+1. **Admin Key Management**
+   - The admin address has privileged access (dispute resolution, fee collection)
+   - Use multi-sig or governance contract for admin in production
+   - Admin cannot modify existing bounties, only resolve disputes
+
+2. **Integer Arithmetic**
+   - All fee calculations use integer division (truncates in favor of payee)
+   - Amounts are in token's smallest unit (stroops for XLM)
+   - No overflow guards beyond Rust's default behavior
+
+3. **Token Approvals**
+   - Posters must pre-approve token transfers before calling `post_bounty`
+   - Contract does not validate token contract behavior
+   - Use only trusted Stellar Asset Contracts
+
+4. **Deadline Enforcement**
+   - Deadlines are enforced at claim/submit time only
+   - Expired bounties remain in storage; poster must cancel for refund
+   - No automatic cleanup of expired bounties
+
+5. **Dispute Resolution**
+   - Admin has full discretion over split percentage (0–100%)
+   - No time limits on dispute resolution
+   - Platform fee is always deducted from contributor's share
+
+6. **Reputation System**
+   - Reputation increments on approval only (not on dispute resolution)
+   - No decay or time-weighting
+   - Reputation is informational only; contract does not enforce minimum scores
+
+### Recommended Audits
+
+Before mainnet deployment:
+- Smart contract security audit (logic vulnerabilities, reentrancy, access control)
+- Economic model review (fee calculations, edge cases, game theory)
+- Integration testing with real Stellar Asset Contracts
+- Stress testing with large bounty counts and pagination
 
 ## License
 
