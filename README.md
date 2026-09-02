@@ -44,15 +44,27 @@ contracts/
     src/
       lib.rs          # contract entry point
       types.rs        # data types and enums
-      bounty.rs       # core bounty logic
-      dispute.rs      # dispute resolution
-      validation.rs   # shared validation helpers
+      bounty.rs       # core bounty logic (post, claim, submit, approve, reject, cancel)
+      dispute.rs      # dispute resolution (dispute, resolve)
+      validation.rs   # shared validation helpers (extracted for code quality)
       events.rs       # on-chain event definitions
       tests.rs        # unit tests
     Cargo.toml
 Cargo.toml            # workspace root
 rust-toolchain.toml   # pinned Rust toolchain
 ```
+
+### Validation Module
+
+The `validation.rs` module encapsulates all validation logic in reusable functions:
+- **Input validation:** amounts, deadlines, strings, percentages
+- **Time-based guards:** deadline expiry checks
+- **Fee logic:** platform fee reading and split calculations
+
+This separation improves code quality by:
+- Providing a single source of truth for validation rules
+- Making validation logic testable in isolation
+- Keeping state transition code focused and readable
 
 ## Dependency Hygiene
 

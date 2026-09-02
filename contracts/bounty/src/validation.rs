@@ -1,3 +1,23 @@
+//! Validation Module
+//!
+//! This module provides shared validation helpers used across the contract.
+//! All validation functions follow a consistent pattern:
+//! - Return `Result<(), ContractError>` on validation failure
+//! - Have no side effects (pure validation logic)
+//! - Are reusable across bounty.rs, dispute.rs, and lib.rs
+//!
+//! Extracting these helpers into a dedicated module improves:
+//! - **Code reuse:** Single source of truth for validation rules
+//! - **Testability:** Validation logic can be tested in isolation
+//! - **Maintainability:** Changes to validation rules happen in one place
+//! - **Readability:** Business logic modules stay focused on state transitions
+//!
+//! Validation categories:
+//! - Input validation (amounts, deadlines, strings)
+//! - Time-based guards (deadline expiry)
+//! - Fee calculations and splits
+//! - Percentage bounds checking
+
 use soroban_sdk::{Env, String};
 
 use crate::types::ContractError;
