@@ -107,8 +107,11 @@ pub fn post_bounty(
 ///
 /// Rules enforced:
 /// - Bounty must exist and be in `Open` status.
-/// - Deadline must not have passed.
+/// - Deadline must not have passed (enforced at claim time).
 /// - Poster cannot claim their own bounty.
+///
+/// **Deadline Guard:** This check prevents claims after the deadline has expired.
+/// Expired bounties must be cancelled by the poster for refund.
 pub fn claim_bounty(
     env: Env,
     contributor: Address,
@@ -148,8 +151,11 @@ pub fn claim_bounty(
 /// Rules enforced:
 /// - Bounty must exist and be in `Claimed` status.
 /// - Caller must be the locked contributor.
-/// - Deadline must not have passed.
+/// - Deadline must not have passed (enforced at submit time).
 /// - Work hash must be a non-empty string.
+///
+/// **Deadline Guard:** This check prevents late submissions after the deadline.
+/// Contributors must submit work before the bounty expires.
 pub fn submit_work(
     env: Env,
     contributor: Address,

@@ -822,3 +822,62 @@ fn test_reputation_different_contributors() {
     assert_eq!(client.get_reputation(&contributor_a), 1);
     assert_eq!(client.get_reputation(&contributor_b), 2);
 }
+
+// ---------------------------------------------------------------------------
+// Deadline enforcement tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_submit_work_after_deadline() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 100;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    // Advance past deadline
+    env.ledger().with_mut(|li| {
+        li.timestamp = deadline + 1;
+    });
+
+    // Try to submit work after deadline
+    let work_hash = String::from_str(&env, "QmWork");
+    let result = client.try_submit_work(&contributor, &bounty_id, &work_hash);
+
+    assert_eq!(result, Err(Ok(ContractError::DeadlineExpired)));
+}
+
+#[test]
+fn test_deadline_enforced_at_both_claim_and_submit() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 200;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+
+    // Claim just before deadline (should succeed)
+    env.ledger().with_mut(|li| {
+        li.timestamp = deadline - 1;
+    });
+    client.claim_bounty(&contributor, &bounty_id);
+
+    // Advance past deadline
+    env.ledger().with_mut(|li| {
+        li.timestamp = deadline + 1;
+    });
+
+    // Submit should fail due to deadline
+    let work_hash = String::from_str(&env, "QmWork");
+    let result = client.try_submit_work(&contributor, &bounty_id, &work_hash);
+
+    assert_eq!(result, Err(Ok(ContractError::DeadlineExpired)));
+}
