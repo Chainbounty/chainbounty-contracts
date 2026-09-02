@@ -46,6 +46,8 @@ cargo test
 
 ## Deploy
 
+See [DEPLOYMENTS.md](DEPLOYMENTS.md) for deployment history and contract addresses.
+
 ### Testnet Deployment
 
 ```bash

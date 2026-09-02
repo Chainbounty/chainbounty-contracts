@@ -5,3 +5,6 @@ target/
 
 # Deployment artifacts
 deployments/
+
+# Environment configuration (contains secrets)
+.env
