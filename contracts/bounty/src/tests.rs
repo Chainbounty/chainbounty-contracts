@@ -181,3 +181,202 @@ fn test_claim_bounty_expired() {
 
     assert_eq!(result, Err(Ok(ContractError::DeadlineExpired)));
 }
+
+// ---------------------------------------------------------------------------
+// Submit work tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_submit_work_success() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Fix bug");
+    let desc = String::from_str(&env, "QmAbc");
+    let deadline = env.ledger().timestamp() + 86400;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &50000, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    let work_hash = String::from_str(&env, "QmWork123");
+    client.submit_work(&contributor, &bounty_id, &work_hash);
+
+    let bounty = client.get_bounty(&bounty_id);
+    assert_eq!(bounty.work_hash, Some(work_hash));
+    assert_eq!(bounty.status, crate::types::BountyStatus::Submitted);
+}
+
+#[test]
+fn test_submit_work_not_claimed() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    let work_hash = String::from_str(&env, "QmWork");
+
+    let result = client.try_submit_work(&contributor, &bounty_id, &work_hash);
+    assert_eq!(result, Err(Ok(ContractError::InvalidStatus)));
+}
+
+#[test]
+fn test_submit_work_wrong_contributor() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    let contributor1 = Address::generate(&env);
+    client.claim_bounty(&contributor1, &bounty_id);
+
+    let contributor2 = Address::generate(&env);
+    let work_hash = String::from_str(&env, "QmWork");
+
+    let result = client.try_submit_work(&contributor2, &bounty_id, &work_hash);
+    assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
+}
+
+// ---------------------------------------------------------------------------
+// Approve submission tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_approve_submission_success() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+    let amount = 100_000i128;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &amount, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    let work_hash = String::from_str(&env, "QmWork");
+    client.submit_work(&contributor, &bounty_id, &work_hash);
+
+    // Approve
+    client.approve_submission(&poster, &bounty_id);
+
+    let bounty = client.get_bounty(&bounty_id);
+    assert_eq!(bounty.status, crate::types::BountyStatus::Completed);
+
+    // Verify contributor received payout (amount - 5% fee)
+    let token_client = token::Client::new(&env, &token_id);
+    let contributor_balance = token_client.balance(&contributor);
+    // 100_000 * 0.95 = 95_000
+    assert_eq!(contributor_balance, 95_000);
+}
+
+#[test]
+fn test_approve_submission_invalid_status() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    // Try to approve without submission
+    let result = client.try_approve_submission(&poster, &bounty_id);
+    assert_eq!(result, Err(Ok(ContractError::InvalidStatus)));
+}
+
+#[test]
+fn test_approve_submission_not_poster() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    let work_hash = String::from_str(&env, "QmWork");
+    client.submit_work(&contributor, &bounty_id, &work_hash);
+
+    // Someone else tries to approve
+    let random_user = Address::generate(&env);
+    let result = client.try_approve_submission(&random_user, &bounty_id);
+    assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
+}
+
+// ---------------------------------------------------------------------------
+// Reject submission tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_reject_submission_success() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    let work_hash = String::from_str(&env, "QmWork");
+    client.submit_work(&contributor, &bounty_id, &work_hash);
+
+    // Reject
+    client.reject_submission(&poster, &bounty_id);
+
+    let bounty = client.get_bounty(&bounty_id);
+    assert_eq!(bounty.status, crate::types::BountyStatus::Open);
+    assert_eq!(bounty.contributor, None);
+    assert_eq!(bounty.work_hash, None);
+}
+
+#[test]
+fn test_reject_submission_invalid_status() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    // Try to reject Open bounty (no submission yet)
+    let result = client.try_reject_submission(&poster, &bounty_id);
+    assert_eq!(result, Err(Ok(ContractError::InvalidStatus)));
+}
+
+#[test]
+fn test_reject_submission_not_poster() {
+    let (env, client, _admin, poster, token_id) = setup_test();
+
+    let title = String::from_str(&env, "Test");
+    let desc = String::from_str(&env, "QmTest");
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let bounty_id = client.post_bounty(&poster, &token_id, &10000, &title, &desc, &deadline);
+
+    let contributor = Address::generate(&env);
+    client.claim_bounty(&contributor, &bounty_id);
+
+    let work_hash = String::from_str(&env, "QmWork");
+    client.submit_work(&contributor, &bounty_id, &work_hash);
+
+    // Random user tries to reject
+    let random_user = Address::generate(&env);
+    let result = client.try_reject_submission(&random_user, &bounty_id);
+    assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
+}
