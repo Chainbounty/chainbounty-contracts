@@ -83,6 +83,241 @@ chmod +x scripts/deploy-mainnet.sh
 ./scripts/deploy-mainnet.sh
 ```
 
+## Contract ABI Reference
+
+### Data Types
+
+#### BountyStatus
+
+```rust
+enum BountyStatus {
+    Open,       // Accepting claims
+    Claimed,    // Contributor locked in, working
+    Submitted,  // Work submitted, awaiting review
+    Completed,  // Approved and paid out
+    Disputed,   // Dispute raised
+    Resolved,   // Dispute resolved by admin
+    Cancelled,  // Cancelled by poster before claim
+}
+```
+
+#### Bounty
+
+```rust
+struct Bounty {
+    id: u64,                    // Auto-incremented unique ID
+    poster: Address,            // Bounty creator
+    token: Address,             // Token contract address (XLM or asset)
+    amount: i128,               // Escrow amount in token's smallest unit
+    title: String,              // Bounty title (min 3 chars)
+    description_hash: String,   // IPFS CID or content hash
+    deadline: u64,              // Unix timestamp deadline
+    status: BountyStatus,       // Current lifecycle state
+    contributor: Option<Address>, // Locked contributor (if claimed)
+    work_hash: Option<String>,  // IPFS CID of submitted work
+    created_at: u64,            // Ledger timestamp of creation
+    updated_at: u64,            // Last state transition timestamp
+}
+```
+
+#### ContractError
+
+```rust
+enum ContractError {
+    AlreadyInitialized,    // Contract already initialized
+    NotInitialized,        // Contract not initialized
+    Unauthorized,          // Caller lacks permission
+    BountyNotFound,        // Invalid bounty ID
+    InvalidStatus,         // Operation invalid for current status
+    InvalidAmount,         // Zero or negative amount
+    InvalidDeadline,       // Deadline in the past
+    InvalidFee,            // Fee > 10% (1000 bps)
+    InvalidInput,          // Empty or too-short string
+    DeadlineExpired,       // Deadline has passed
+    InvalidSplit,          // Split percentage > 100
+    NotAParty,             // Caller not poster or contributor
+}
+```
+
+### Entry Points
+
+#### `initialize(admin: Address, fee_bps: u32) -> Result<(), ContractError>`
+
+Initialize the contract (one-time only).
+
+- **admin:** Address with dispute resolution privileges
+- **fee_bps:** Platform fee in basis points (max 1000 = 10%)
+- **Emits:** `init` event
+
+#### `post_bounty(poster: Address, token: Address, amount: i128, title: String, description_hash: String, deadline: u64) -> Result<u64, ContractError>`
+
+Create a new bounty with escrowed funds.
+
+- **Returns:** Bounty ID
+- **Requires:** Poster must pre-approve token transfer
+- **Emits:** `posted` event
+- **Errors:** `InvalidAmount`, `InvalidDeadline`, `InvalidInput`, `NotInitialized`
+
+#### `claim_bounty(contributor: Address, bounty_id: u64) -> Result<(), ContractError>`
+
+Lock a contributor onto an Open bounty.
+
+- **Emits:** `claimed` event
+- **Errors:** `BountyNotFound`, `InvalidStatus`, `DeadlineExpired`, `Unauthorized` (self-claim)
+
+#### `submit_work(contributor: Address, bounty_id: u64, work_hash: String) -> Result<(), ContractError>`
+
+Submit work as proof of completion.
+
+- **work_hash:** IPFS CID or content hash
+- **Emits:** `submitted` event
+- **Errors:** `InvalidStatus`, `Unauthorized`, `DeadlineExpired`, `InvalidInput`
+
+#### `approve_submission(poster: Address, bounty_id: u64) -> Result<(), ContractError>`
+
+Approve work and release escrow to contributor (minus platform fee).
+
+- **Transfers:**
+  - Contributor receives `amount * (10000 - fee_bps) / 10000`
+  - Admin receives platform fee
+- **Increments:** Contributor reputation by 1
+- **Emits:** `approved` event
+- **Errors:** `InvalidStatus`, `Unauthorized`
+
+#### `reject_submission(poster: Address, bounty_id: u64) -> Result<(), ContractError>`
+
+Reject work and reset bounty to Open (escrow remains locked).
+
+- **Emits:** `rejected` event
+- **Errors:** `InvalidStatus`, `Unauthorized`
+
+#### `cancel_bounty(poster: Address, bounty_id: u64) -> Result<(), ContractError>`
+
+Cancel an Open bounty and refund full escrow to poster.
+
+- **Emits:** `cancelled` event
+- **Errors:** `InvalidStatus` (can only cancel Open bounties), `Unauthorized`
+
+#### `dispute_bounty(caller: Address, bounty_id: u64) -> Result<(), ContractError>`
+
+Raise a dispute on a Submitted bounty (poster or contributor only).
+
+- **Emits:** `disputed` event
+- **Errors:** `InvalidStatus`, `NotAParty`
+
+#### `resolve_dispute(resolver: Address, bounty_id: u64, contributor_pct: u32) -> Result<(), ContractError>`
+
+Admin resolves dispute with a split payment.
+
+- **contributor_pct:** Percentage (0–100) awarded to contributor
+- **Transfers:**
+  - Contributor receives `(amount * contributor_pct / 100) * (10000 - fee_bps) / 10000`
+  - Admin receives platform fee on contributor's share
+  - Poster receives remainder
+- **Emits:** `resolved` event
+- **Errors:** `InvalidSplit`, `InvalidStatus`, `Unauthorized` (admin only)
+
+#### `get_bounty(bounty_id: u64) -> Result<Bounty, ContractError>`
+
+Read a single bounty by ID.
+
+#### `list_bounties(from_id: u64, limit: u32) -> Vec<Bounty>`
+
+Paginated read of bounties (max 20 per call).
+
+#### `get_reputation(contributor: Address) -> u32`
+
+Read contributor's reputation score (completed bounties count).
+
+#### `bounty_count() -> u64`
+
+Total number of bounties created.
+
+## Event Schema
+
+All events use Soroban's native event system with short symbol topics (≤9 chars).
+
+### `init`
+
+Contract initialized.
+
+```rust
+topic: (symbol_short!("init"), admin: Address)
+data: fee_bps: u32
+```
+
+### `posted`
+
+New bounty created.
+
+```rust
+topic: (symbol_short!("posted"), bounty_id: u64)
+data: (poster: Address, amount: i128)
+```
+
+### `claimed`
+
+Bounty claimed by contributor.
+
+```rust
+topic: (symbol_short!("claimed"), bounty_id: u64)
+data: contributor: Address
+```
+
+### `submitted`
+
+Work submitted.
+
+```rust
+topic: (symbol_short!("submitted"), bounty_id: u64)
+data: (contributor: Address, work_hash: String)
+```
+
+### `approved`
+
+Work approved, escrow released.
+
+```rust
+topic: (symbol_short!("approved"), bounty_id: u64)
+data: (contributor: Address, payout: i128)
+```
+
+### `rejected`
+
+Work rejected, bounty reset to Open.
+
+```rust
+topic: (symbol_short!("rejected"), bounty_id: u64)
+data: poster: Address
+```
+
+### `cancelled`
+
+Bounty cancelled, escrow refunded.
+
+```rust
+topic: (symbol_short!("cancelled"), bounty_id: u64)
+data: poster: Address
+```
+
+### `disputed`
+
+Dispute raised.
+
+```rust
+topic: (symbol_short!("disputed"), bounty_id: u64)
+data: caller: Address
+```
+
+### `resolved`
+
+Dispute resolved by admin.
+
+```rust
+topic: (symbol_short!("resolved"), bounty_id: u64)
+data: (resolver: Address, contributor_pct: u32)
+```
+
 ## Project Structure
 
 ```
